@@ -1,0 +1,7 @@
+password.cred
+json_files/
+tracker.db
+urls.txt
+c_env/
+.vscode
+__pycache__/

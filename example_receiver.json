@@ -1,0 +1,13 @@
+{
+    "person": "Test subject",
+    "contact": {
+        "email": "youwantsales@gmail.com",
+        "number": "+61412345678"
+    },
+    "sites": {
+        "kookai": [
+            "https://www.kookai.com.au/products/oyster-tailored-pant-natural-white",
+            "https://www.kookai.com.au/products/daisy-tank-top-ivory"
+        ]
+    }
+}
