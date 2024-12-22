@@ -1,8 +1,7 @@
 {
     "person": "Test subject",
     "contact": {
-        "email": "youwantsales@gmail.com",
-        "number": "+61412345678"
+        "email": "youwantsales@gmail.com"
     },
     "sites": {
         "kookai": [

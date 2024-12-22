@@ -1,4 +1,5 @@
-password.cred
+*.cred
+!example_password.cred
 json_files/
 tracker.db
 urls.txt
