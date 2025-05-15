@@ -2,7 +2,7 @@
 Functions for scraping various websites. Should return a price and a compare price.
 Compare price is the un-discounted price when the item is on sale.
 """
-
+from __future__ import annotations
 import logging
 
 import bs4

@@ -1,9 +1,9 @@
+from __future__ import annotations
 import argparse
 import json
 from datetime import datetime
 import logging
-
-import pandas as pd
+import sqlite3
 
 import mail, site_scrapers
 
@@ -55,9 +55,6 @@ def Input():
 
 class URLIDs:
     """Simple 2 directional dictionary for URL to ID and ID to URL."""
-    # Didn't bother inheriting from a dict or similar because
-    # we can always access the sub-dicts for the same functionality.
-    # eg. for looping
     def __init__(self):
         self._ID_as_key = {}
         self._url_as_key = {}
@@ -76,25 +73,32 @@ class URLIDs:
 
 
 def get_url_IDs() -> URLIDs:
-    """Get the url IDs from the file, or create a new one if it doesn't exist."""
-    try:
-        with open(url_ID_file, "r") as f:
-            lines = f.read()
-    except FileNotFoundError:
-        LOGGER.info("No URL IDs file found, creating new one.")
-        return URLIDs()
-    lines = lines[:-1] if lines[-1] == "\n" else lines
+    """Get the url IDs from the database."""
+    conn = sqlite3.connect(database_file)
+    cursor = conn.cursor()
+    cursor.execute("SELECT url_ID, url FROM url_ids")
+    rows = cursor.fetchall()
+    conn.close()
     url_IDs = URLIDs()
-    for line in lines.split("\n"):
-        url_IDs.add_ID(*line.split(" "))
+    for url_ID, url in rows:
+        url_IDs.add_ID(url_ID, url)
     return url_IDs
 
 
 def write_url_IDs(url_IDs: URLIDs):
-    """Write the URL IDs to the file."""
-    with open(url_ID_file, "w") as f:
-        for ID, url in url_IDs.ID_as_key.items():
-            f.write(f"{ID} {url}\n")
+    """Write the URL IDs to the database."""
+    conn = sqlite3.connect(database_file)
+    cursor = conn.cursor()
+    for url_ID, url in url_IDs.ID_as_key.items():
+        cursor.execute(
+            """
+            INSERT OR IGNORE INTO url_ids (url_ID, url)
+            VALUES (?, ?)
+            """,
+            (url_ID, url),
+        )
+    conn.commit()
+    conn.close()
 
 
 def assign_ID_to_new(url_IDs: URLIDs, new_url: str) -> int | None:
@@ -105,47 +109,99 @@ def assign_ID_to_new(url_IDs: URLIDs, new_url: str) -> int | None:
         except ValueError:
             new_ID = 0
         url_IDs.add_ID(new_ID, new_url)
+        # Insert the new mapping into the database
+        conn = sqlite3.connect(database_file)
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO url_ids (url_ID, url)
+            VALUES (?, ?)
+            """,
+            (new_ID, new_url),
+        )
+        conn.commit()
+        conn.close()
         return new_ID
 
 
-def load_database():
-    """Load the database from the file, or create an empty DataFrame with labelled columns."""
-    try:
-        return pd.read_csv(database_file, parse_dates=["date"])
-    except FileNotFoundError:
-        LOGGER.info("No existing database found, creating new one.")
-        df = pd.DataFrame(columns=["url_ID", "price", "compare_price", "date"])
-        return df
-
-
-def write_database_file(todays_entrys: dict, database: pd.DataFrame):
-    """Convert today's entrys to a DataFrame, remove duplicates, and write to file."""
-    df = pd.DataFrame(todays_entrys)
-    # Throws a warning when df["compare_price"] is all NaN. Should be fine.
-    database = pd.concat([database, df], ignore_index=True)
-    database["date"] = pd.to_datetime(database["date"])
-    database = database.drop_duplicates(ignore_index=True) # Has issues if date formats are inconsistent
-    database.to_csv(
-        database_file, mode="w", header=True, index=False, date_format="%Y/%m/%d"
+def initialise_database():
+    """Initialise the SQLite database and create tables if they don't exist."""
+    conn = sqlite3.connect(database_file)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS tracker (
+            url_ID INTEGER,
+            price REAL,
+            compare_price REAL,
+            date TEXT,
+            PRIMARY KEY (url_ID, date)
+        )
+        """
     )
+    # Create url_ids table
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS url_ids (
+            url_ID INTEGER PRIMARY KEY,
+            url TEXT UNIQUE
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
 
 
-def get_price_history(database: pd.DataFrame, todays_entrys: dict):
+def write_database(todays_entrys: dict):
+    """Insert today's entries into the SQLite database."""
+    conn = sqlite3.connect(database_file)
+    cursor = conn.cursor()
+    for i in range(len(todays_entrys["url_ID"])):
+        cursor.execute(
+            """
+            INSERT OR IGNORE INTO tracker (url_ID, price, compare_price, date)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                todays_entrys["url_ID"][i],
+                todays_entrys["price"][i],
+                todays_entrys["compare_price"][i],
+                todays_entrys["date"][i].strftime("%Y-%m-%d"),
+            ),
+        )
+    conn.commit()
+    conn.close()
+
+
+def get_price_history(todays_entrys: dict):
     """Compile the mean and mode prices, on sale status, and last sale date for each URL ID."""
+    conn = sqlite3.connect(database_file)
+    cursor = conn.cursor()
     history = {}
     for url_ID in todays_entrys["url_ID"]:
-        if url_ID in database["url_ID"]:
-            subset = database[database["url_ID"] == url_ID]
-            on_sale = subset[subset["compare_price"].notna()]
+        cursor.execute(
+            """
+            SELECT price, compare_price, date
+            FROM tracker
+            WHERE url_ID = ?
+            """,
+            (url_ID,),
+        )
+        rows = cursor.fetchall()
+        if rows:
+            prices = [row[0] for row in rows]
+            compare_prices = [row[1] for row in rows if row[1] is not None]
+            dates = [row[2] for row in rows]
             history[url_ID] = dict(
-                mean_price=subset["price"].mean(),
-                mode_price=subset["price"].mode().iloc[0],
-                on_sale_count=len(on_sale),
-                last_sale=on_sale["date"].max(),
-                num_entries=len(subset),
+                mean_price=sum(prices) / len(prices),
+                mode_price=max(set(prices), key=prices.count),
+                on_sale_count=len(compare_prices),
+                last_sale=max(dates) if compare_prices else None,
+                num_entries=len(prices),
             )
         else:
             history[url_ID] = None
+    conn.close()
     return history
 
 
@@ -155,13 +211,11 @@ def convert_prices(*args: str) -> list[float]:
 
 
 def main(json_files: list, sender_json: str, no_email: bool = False):
-
+    initialise_database()
     sender_details = json.load(open(sender_json, "r"))
 
     url_IDs = get_url_IDs()
     LOGGER.debug(f"URL IDs: {url_IDs.url_as_key}")
-    database = load_database()
-    LOGGER.debug(f"Database: {database}")
 
     # Get all the URLs and the people tracking them
     url_dict = {}
@@ -193,16 +247,16 @@ def main(json_files: list, sender_json: str, no_email: bool = False):
         todays_entrys["price"].append(price)
         todays_entrys["compare_price"].append(compare_price)
     todays_entrys["date"] = [
-        pd.to_datetime(datetime.today().strftime("%Y-%m-%d"))
+        datetime.today()
     ] * len(todays_entrys["url_ID"])
     LOGGER.debug(f"Today's entrys: {todays_entrys}")
     LOGGER.debug(f"URL IDs: {url_IDs}")
 
     write_url_IDs(url_IDs)
-    write_database_file(todays_entrys, database)
+    write_database(todays_entrys)
 
     # Write the summary for each item
-    price_history = get_price_history(database, todays_entrys)
+    price_history = get_price_history(todays_entrys)
     item_summaries = {}
     for i, url_ID in enumerate(todays_entrys["url_ID"]):
         if price_history[url_ID] is not None:
