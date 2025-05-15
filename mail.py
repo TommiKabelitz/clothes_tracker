@@ -12,30 +12,46 @@ logging.basicConfig(
 
 
 mail_template = """
-Hello {person},
+<html>
+  <body style="font-family: Arial, sans-serif; font-size: 16px; color: #333; line-height: 1.6;">
+    <div style="max-width: 600px; margin: auto; border: 1px solid #ddd; padding: 20px; border-radius: 8px;">
+      
+      <p>Hello <strong>{person}</strong>,</p>
+      
+      <p>Hopefully you have some sales today! Here are the price updates for the items you are tracking:</p>
 
-Hopefully you have some sales today! Here are the price updates for the items you are tracking:
+      {contents}
 
-{contents}
+      <p>Best,<br>Your Price Tracker xx</p>
 
-Best,
-Your Price Tracker x
-
-Reply to this email with feedback or questions.
+      <hr style="margin-top: 30px; border: none; border-top: 1px solid #ccc;">
+      <p style="font-size: 13px; color: #888;">Reply to this email with feedback or questions.</p>
+    </div>
+  </body>
+</html>
 """
 
 history_template = """
-Mean Price: {mean_price}
-Mode Price: {mode_price}
-On Sale Proportion: {on_sale_proportion} ({on_sale_count}/{num_entries})
-Last on Sale: {last_sale}
+<ul style="margin: 0; padding-left: 20px;">
+  <li><strong>Mean Price:</strong> {mean_price}</li>
+  <li><strong>Mode Price:</strong> {mode_price}</li>
+  <li><strong>On Sale Proportion:</strong> {on_sale_proportion:.2f} ({on_sale_count}/{num_entries})</li>
+  <li><strong>Last on Sale:</strong> {last_sale}</li>
+</ul>
 """
 
 summary_template = """
-{url}
-{history_summary}
-Current Price: {price}
-Is on Sale: {is_on_sale}
+<div style="margin-bottom: 20px; padding: 10px; border: 1px solid #eee; border-radius: 6px; {box_style}">
+  {sale_badge}
+  <a href="{url}" style="color: #1a0dab; text-decoration: none;">{url}</a><br><br>
+
+  {history_summary}
+
+  <p><strong>Current Price:</strong> {price}<br>
+     {discount_info}</p>
+
+  {image_block}
+</div>
 """
 
 
@@ -72,7 +88,8 @@ def send_email(person: str, contact: dict, contents: str, sender_details: dict):
     )
     msg["From"] = sender_details["address"]
     msg["To"] = contact["email"]
-    msg.set_content(mail_template.format(person=person, contents=contents))
+    msg.set_content("This email contains HTML. Please view in a client that supports HTML.")
+    msg.add_alternative(contents, subtype="html")
 
     with smtplib.SMTP_SSL("smtp.gmail.com", port, context=context) as server:
         server.login(sender_details["address"], password)

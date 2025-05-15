@@ -55,6 +55,7 @@ def Input():
 
 class URLIDs:
     """Simple 2 directional dictionary for URL to ID and ID to URL."""
+
     def __init__(self):
         self._ID_as_key = {}
         self._url_as_key = {}
@@ -236,19 +237,24 @@ def main(json_files: list, sender_json: str, no_email: bool = False):
         details_dict[person] = contact, personal_urls
 
     # Get the prices for each URL
-    todays_entrys = {"url_ID": [], "price": [], "compare_price": [], "date": []}
+    todays_entrys = {
+        "url_ID": [],
+        "price": [],
+        "compare_price": [],
+        "image_urls": [],
+        "date": [],
+    }
     for url, (people, site) in url_dict.items():
         if url not in url_IDs.url_as_key:
             assign_ID_to_new(url_IDs, url)
         url_ID = url_IDs.url_as_key[url]
-        price, compare_price = getattr(site_scrapers, site)(url)
+        price, compare_price, image_urls = getattr(site_scrapers, site)(url)
         price, compare_price = convert_prices(price, compare_price)
         todays_entrys["url_ID"].append(url_ID)
         todays_entrys["price"].append(price)
         todays_entrys["compare_price"].append(compare_price)
-    todays_entrys["date"] = [
-        datetime.today()
-    ] * len(todays_entrys["url_ID"])
+        todays_entrys["image_urls"].append(image_urls)
+    todays_entrys["date"] = [datetime.today()] * len(todays_entrys["url_ID"])
     LOGGER.debug(f"Today's entrys: {todays_entrys}")
     LOGGER.debug(f"URL IDs: {url_IDs}")
 
@@ -272,16 +278,34 @@ def main(json_files: list, sender_json: str, no_email: bool = False):
 
         else:
             history_summary = "No history available (new item to tracker)."
+
+        image_url = (
+            todays_entrys["image_urls"][i][0]
+            if todays_entrys["image_urls"][i]
+            else None
+        )
+        image_block = (
+            f'<img src="{image_url}" alt="Product Image" style="max-height: 150px; width: auto; border-radius: 4px; margin-top: 10px;">'
+            if image_url
+            else ""
+        )
+
+        is_on_sale = todays_entrys["compare_price"][i] is not None
+        box_style = "background-color: #e6ffe6;" if is_on_sale else ""
+        sale_badge = '<div style="background-color: #28a745; color: white; padding: 4px 8px; display: inline-block; border-radius: 4px; font-size: 14px; margin-bottom: 10px;">On Sale!</div>' if is_on_sale else ''
+        discount_info = f"<strong>Discounted from:</strong> {todays_entrys['compare_price'][i]}"
         summary = mail.summary_template.format(
             url_ID=url_ID,
             url=url_IDs.ID_as_key[url_ID],
             history_summary=history_summary,
             price=todays_entrys["price"][i],
-            is_on_sale=todays_entrys["compare_price"][i] is not None,
+            is_on_sale=is_on_sale,
+            image_block=image_block,
+            box_style=box_style,
+            sale_badge=sale_badge,
+            discount_info=discount_info,
         )
 
-        if todays_entrys["compare_price"][i] is not None:
-            summary += f"Discounted from: {todays_entrys['compare_price'][i]}\n"
         item_summaries[url_ID] = summary
 
     if no_email:
@@ -289,7 +313,10 @@ def main(json_files: list, sender_json: str, no_email: bool = False):
     # Send emails with the summaries they are tracking
     for person, (contact, urls) in details_dict.items():
         contents = [item_summaries[url_IDs.url_as_key[url]] for url in urls]
-        mail.send_email(person, contact, "\n\n".join(contents), sender_details)
+        email_html = mail.mail_template.format(
+            person=person, contents="".join(contents)
+        )
+        mail.send_email(person, contact, email_html, sender_details)
 
 
 if __name__ == "__main__":
