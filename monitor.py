@@ -208,7 +208,10 @@ def get_price_history(todays_entrys: dict):
 
 def convert_prices(*args: str) -> list[float]:
     """Drop $ from prices and convert to float. Accepts arbitrary number of arguments."""
-    return [float(arg.replace("$", "")) if arg is not None else None for arg in args]
+    return [
+        float(arg.replace("$", "").replace("AUD", "")) if arg is not None else None
+        for arg in args
+    ]
 
 
 def main(json_files: list, sender_json: str, no_email: bool = False):
@@ -292,8 +295,14 @@ def main(json_files: list, sender_json: str, no_email: bool = False):
 
         is_on_sale = todays_entrys["compare_price"][i] is not None
         box_style = "background-color: #e6ffe6;" if is_on_sale else ""
-        sale_badge = '<div style="background-color: #28a745; color: white; padding: 4px 8px; display: inline-block; border-radius: 4px; font-size: 14px; margin-bottom: 10px;">On Sale!</div>' if is_on_sale else ''
-        discount_info = f"<strong>Discounted from:</strong> {todays_entrys['compare_price'][i]}"
+        sale_badge = (
+            '<div style="background-color: #28a745; color: white; padding: 4px 8px; display: inline-block; border-radius: 4px; font-size: 14px; margin-bottom: 10px;">On Sale!</div>'
+            if is_on_sale
+            else ""
+        )
+        discount_info = (
+            f"<strong>Discounted from:</strong> {todays_entrys['compare_price'][i]}"
+        )
         summary = mail.summary_template.format(
             url_ID=url_ID,
             url=url_IDs.ID_as_key[url_ID],

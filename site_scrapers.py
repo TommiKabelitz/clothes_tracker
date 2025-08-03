@@ -65,3 +65,57 @@ def kookai(url: str) -> tuple[str, str | None, list[str]]:
             continue
 
     return price, compare_price, image_urls
+
+
+def dissh(url: str) -> tuple[str, str | None, list[str]]:
+    """
+    Dissh website scraper.
+
+    Dissh wraps its prices in a price-wrapped div. The normal and sale prices can then
+    be extracted from the money-price and money-compare-at-price classes.
+
+    Args:
+        url (str): The URL to scrape.
+
+    Returns:
+        tuple: (price: str, compare_price: str|None, image_urls: list[str])
+        The price (current buying price), compare price (un-discounted price when on sale, otherwise None) and list of image urls for the item.
+    """
+    LOGGER.debug(f"Checking: \n{url}")
+    data = requests.get(url)
+    if "Page Not Found" in data.text:
+        LOGGER.error("Page Not Found")
+        raise requests.HTTPError
+
+    soup = bs4.BeautifulSoup(data.text, "html.parser")
+
+    try:
+        all_divs = soup.find_all("div", attrs={"class": "price-wrapper"})
+    except Exception:
+        LOGGER.error(
+            "There was an error trying to identify HTML elements on the webpage."
+        )
+    compare_price = None
+    for div in all_divs:
+        for tag in div.children:
+            if not hasattr(tag, "attrs"):
+                continue
+            if "class" not in tag.attrs:
+                continue
+            if "money-price" in tag["class"]:
+                price = tag.text.strip()
+            if "money-compare-at-price" in tag["class"]:
+                tag_text_stripped = tag.text.strip()
+                compare_price = tag_text_stripped if tag_text_stripped != "" else None
+        LOGGER.debug(f"Found price to be {price} with compare price {compare_price}")
+
+    image_urls = []
+    for tag in soup.find_all("meta", property="og:image"):
+        try:
+            url = tag.get("content")
+            url = url.replace("amp;", "")
+            image_urls.append(url)
+        except AttributeError:
+            continue
+
+    return price, compare_price, image_urls
