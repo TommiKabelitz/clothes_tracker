@@ -3,6 +3,7 @@ import argparse
 import json
 from datetime import datetime
 import logging
+import requests
 import sqlite3
 
 import mail, site_scrapers
@@ -247,11 +248,16 @@ def main(json_files: list, sender_json: str, no_email: bool = False):
         "image_urls": [],
         "date": [],
     }
+    broken_urls = []
     for url, (people, site) in url_dict.items():
         if url not in url_IDs.url_as_key:
             assign_ID_to_new(url_IDs, url)
         url_ID = url_IDs.url_as_key[url]
-        price, compare_price, image_urls = getattr(site_scrapers, site)(url)
+        try:
+            price, compare_price, image_urls = getattr(site_scrapers, site)(url)
+        except requests.HTTPError:
+            broken_urls.append(url)
+            continue
         price, compare_price = convert_prices(price, compare_price)
         todays_entrys["url_ID"].append(url_ID)
         todays_entrys["price"].append(price)
@@ -321,7 +327,13 @@ def main(json_files: list, sender_json: str, no_email: bool = False):
         return
     # Send emails with the summaries they are tracking
     for person, (contact, urls) in details_dict.items():
-        contents = [item_summaries[url_IDs.url_as_key[url]] for url in urls]
+        contents = []
+        for url in urls:
+            try:
+                contents.append(item_summaries[url_IDs.url_as_key[url]])
+            except KeyError:
+                contents.append(mail.url_invalid_template.format(url=url))
+                continue
         email_html = mail.mail_template.format(
             person=person, contents="".join(contents)
         )

@@ -54,6 +54,16 @@ summary_template = """
 </div>
 """
 
+url_invalid_template = """
+<div style="border: 1px solid #ff0000; padding: 8px;">
+  <div style="color: #ff0000; font-weight: bold;">
+    This item either no longer exists or has moved to a different url. (It is possible this colour is simply not listed anymore). Please send me an updated link so I can update it.
+  </div>
+  <div style="margin-top: 4px; word-break: break-all;">
+    {url}
+  </div>
+</div>
+"""
 
 def send_email(person: str, contact: dict, contents: str, sender_details: dict):
     """
